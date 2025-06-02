@@ -48,7 +48,7 @@ class PCB:
 
     def update_io(self):
         """更新I/O操作时间"""
-        if self.state == PCB.BLOCKED:
+        if self.state == PCB.BLOCKED and self.io_remaining > 0:
             self.io_remaining -= 1
             if self.io_remaining <= 0:
                 self.state = PCB.READY

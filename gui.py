@@ -1,4 +1,5 @@
 import tkinter as tk
+import tkinter as tk
 from tkinter import ttk
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -14,7 +15,8 @@ class SimulatorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("任务调度模拟器")
-        self.root.geometry("1200x700")
+        # 增加窗口高度，确保统计数据完全显示
+        self.root.geometry("1200x780")
 
         # 设置中文字体
         plt.rcParams['font.sans-serif'] = ['SimHei']  # 用于显示中文
@@ -41,7 +43,7 @@ class SimulatorGUI:
 
         # 控制面板
         control_panel = ttk.LabelFrame(main_frame, text="控制面板", padding="10")
-        control_panel.pack(fill=tk.X, padx=10, pady=10)
+        control_panel.pack(fill=tk.X, padx=10, pady=5)
 
         # 调度算法选择
         ttk.Label(control_panel, text="调度算法:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
@@ -68,19 +70,19 @@ class SimulatorGUI:
 
         # 按钮
         button_frame = ttk.Frame(control_panel)
-        button_frame.grid(row=1, column=0, columnspan=8, pady=10)
+        button_frame.grid(row=1, column=0, columnspan=8, pady=5)
 
         ttk.Button(button_frame, text="生成进程", command=self.generate_processes).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="运行模拟", command=self.run_simulation).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="清除", command=self.clear).pack(side=tk.LEFT, padx=5)
 
-        # 进程列表
+        # 进程列表 - 减少高度以留出更多空间给统计数据
         process_frame = ttk.LabelFrame(main_frame, text="进程列表", padding="10")
-        process_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        process_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # 创建进程表格
+        # 创建进程表格 - 设置固定高度
         columns = ("进程ID", "优先级", "执行时间", "I/O时间", "到达时间")
-        self.process_table = ttk.Treeview(process_frame, columns=columns, show="headings")
+        self.process_table = ttk.Treeview(process_frame, columns=columns, show="headings", height=6)
 
         # 设置列标题
         for col in columns:
@@ -93,22 +95,26 @@ class SimulatorGUI:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.process_table.pack(fill=tk.BOTH, expand=True)
 
-        # 创建可视化区域
+        # 创建可视化区域 - 减少高度
         viz_frame = ttk.LabelFrame(main_frame, text="模拟时间轴", padding="10")
-        viz_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        viz_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # 创建matplotlib图表
-        self.figure = Figure(figsize=(12, 4), dpi=100)
+        # 创建matplotlib图表 - 减小图表高度
+        self.figure = Figure(figsize=(12, 3.2), dpi=100)  # 减小高度
         self.plot = self.figure.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.figure, master=viz_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        # 统计数据区域
+        # 统计数据区域 - 增加高度以确保完全显示
         stats_frame = ttk.LabelFrame(main_frame, text="统计数据", padding="10")
-        stats_frame.pack(fill=tk.X, padx=10, pady=10)
+        stats_frame.pack(fill=tk.BOTH, padx=10, pady=5)
 
-        self.stats_text = tk.Text(stats_frame, height=4, width=70)
+        # 增加统计数据文本框的高度
+        self.stats_text = tk.Text(stats_frame, height=5, width=70)
         self.stats_text.pack(fill=tk.BOTH, expand=True)
+
+        # 初始化默认统计数据
+        self.reset_statistics()
 
     def on_scheduler_changed(self, event):
         """处理调度算法变更"""
@@ -133,6 +139,13 @@ class SimulatorGUI:
 
         # 更新进程表格
         self.update_process_table()
+
+        # 重置统计信息
+        self.reset_statistics()
+
+        # 清空图表
+        self.plot.clear()
+        self.canvas.draw()
 
     def update_process_table(self):
         """更新进程表格显示"""
@@ -166,15 +179,30 @@ class SimulatorGUI:
         # 如果没有进程，先生成进程
         if not hasattr(self, 'processes') or not self.simulator.processes:
             self.generate_processes()
+        else:
+            # 保留现有进程
+            processes_backup = self.simulator.processes.copy()
+            self.simulator.processes = processes_backup
 
         # 运行模拟
-        self.simulator.run_simulation(self.max_time.get())
+        try:
+            self.simulator.run_simulation(self.max_time.get())
+            print(f"模拟完成: {scheduler_name}, 执行历史记录: {len(self.simulator.execution_history)}")
 
-        # 更新可视化
-        self.update_visualization()
+            # 更新可视化
+            self.update_visualization()
 
-        # 更新统计数据
-        self.update_statistics()
+            # 更新统计数据
+            self.update_statistics()
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"模拟过程发生错误: {e}")
+
+            # 即使发生错误也尝试更新统计和可视化
+            self.update_statistics()
+            self.update_visualization()
 
     def update_visualization(self):
         """更新可视化视图"""
@@ -192,24 +220,36 @@ class SimulatorGUI:
             y_ticks.append(y_pos)
             y_labels.append(f"P{process.pid}")
 
+            if not process.execution_history:
+                # 为没有执行历史的进程添加标记
+                self.plot.text(5, y_pos, f"未执行 (优先级:{process.static_priority}, 到达时间:{process.arrival_time})",
+                               ha='left', va='center', color='red', fontsize=8)
+
             # 绘制执行时段
             for start, end in process.execution_history:
                 self.plot.barh(y_pos, end - start, left=start, height=0.5,
                                color=process.color, alpha=0.8, edgecolor='black')
 
             # 绘制I/O时段
+            io_shown = set()  # 避免重复显示同一时间点的I/O
             for io_time, io_duration in process.io_times.items():
-                # 查找此I/O操作在执行历史中的位置
-                for time, pid, state in self.simulator.execution_history:
-                    if pid == process.pid and time == io_time:
-                        io_start = time + 1  # I/O在执行之后开始
+                # 只考虑已执行过的I/O
+                if io_time < process.executed_time and io_time not in io_shown:
+                    # 查找此I/O操作可能的开始时间
+                    io_start = None
+                    for start, end in process.execution_history:
+                        if start <= io_time < end:
+                            io_start = io_time + 1  # I/O在执行点之后开始
+                            break
+
+                    if io_start is not None:
                         self.plot.barh(y_pos, io_duration, left=io_start, height=0.3,
                                        color='gray', alpha=0.6, edgecolor='black', hatch='///')
 
                         # 添加I/O标签
                         self.plot.text(io_start + io_duration / 2, y_pos, 'I/O',
                                        ha='center', va='center', color='black', fontsize=8)
-                        break
+                        io_shown.add(io_time)
 
         # 设置图表属性
         self.plot.set_yticks(y_ticks)
@@ -228,16 +268,31 @@ class SimulatorGUI:
         self.figure.tight_layout()
         self.canvas.draw()
 
+    def reset_statistics(self):
+        """重置统计数据显示为默认值"""
+        self.stats_text.delete(1.0, tk.END)
+        default_stats = (f"平均等待时间: 0.00 时间单位\n"
+                         f"平均周转时间: 0.00 时间单位\n"
+                         f"平均响应时间: 0.00 时间单位\n"
+                         f"调度算法: {self.selected_scheduler.get()}\n"
+                         f"完成进程数: 0/{self.num_processes.get()}")
+        self.stats_text.insert(tk.END, default_stats)
+
     def update_statistics(self):
         """更新统计数据"""
+        # 完全清除文本框内容
+        self.stats_text.delete(1.0, tk.END)
+
+        # 计算统计指标
         total_waiting_time = 0
         total_turnaround_time = 0
         total_response_time = 0
-        n = len(self.simulator.processes)
+        completed_count = 0
 
         # 计算各项指标
         for process in self.simulator.processes:
-            if process.completion_time > 0:  # 仅考虑已完成的进程
+            if process.state == PCB.TERMINATED:  # 仅考虑已完成的进程
+                completed_count += 1
                 turnaround_time = process.completion_time - process.arrival_time
                 total_turnaround_time += turnaround_time
                 total_waiting_time += process.waiting_time
@@ -248,18 +303,21 @@ class SimulatorGUI:
                     response_time = first_exec_time - process.arrival_time
                     total_response_time += response_time
 
-        # 计算平均值
-        avg_waiting = total_waiting_time / n if n > 0 else 0
-        avg_turnaround = total_turnaround_time / n if n > 0 else 0
-        avg_response = total_response_time / n if n > 0 else 0
+        # 计算平均值 - 避免除零错误
+        if completed_count > 0:
+            avg_waiting = total_waiting_time / completed_count
+            avg_turnaround = total_turnaround_time / completed_count
+            avg_response = total_response_time / completed_count
+        else:
+            avg_waiting = avg_turnaround = avg_response = 0
 
         # 显示统计结果
         stats_text = (f"平均等待时间: {avg_waiting:.2f} 时间单位\n"
                       f"平均周转时间: {avg_turnaround:.2f} 时间单位\n"
                       f"平均响应时间: {avg_response:.2f} 时间单位\n"
-                      f"调度算法: {self.selected_scheduler.get()}")
+                      f"调度算法: {self.selected_scheduler.get()}\n"
+                      f"完成进程数: {completed_count}/{len(self.simulator.processes)}")
 
-        self.stats_text.delete(1.0, tk.END)
         self.stats_text.insert(tk.END, stats_text)
 
     def clear(self):

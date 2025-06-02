@@ -92,6 +92,7 @@ class TaskSimulator:
             for process in self.processes:
                 if process.arrival_time == self.current_time and process.state != PCB.READY and process.state != PCB.RUNNING:
                     self.scheduler.add_process(process)
+                    print(f"时间 {self.current_time}: 进程 {process.pid} 到达")
 
             # 处理I/O完成的进程
             self.scheduler.unblock_processes()
@@ -116,6 +117,8 @@ class TaskSimulator:
 
                 # 记录执行历史
                 self.execution_history.append((self.current_time, current_process.pid, current_process.state))
+                print(
+                    f"时间 {self.current_time}: 执行进程 {current_process.pid}, 剩余时间: {current_process.remaining_time}")
 
                 # 更新进程执行历史
                 if current_process.execution_history and current_process.execution_history[-1][1] == self.current_time:
@@ -127,22 +130,40 @@ class TaskSimulator:
 
                 # 检查是否需要I/O
                 if current_process.is_io_required(current_process.executed_time):
+                    print(f"时间 {self.current_time}: 进程 {current_process.pid} 开始I/O操作")
                     current_process.start_io()
                     self.scheduler.block_process(current_process)
 
                 # 检查进程是否完成
                 elif current_process.state == PCB.TERMINATED:
+                    print(f"时间 {self.current_time}: 进程 {current_process.pid} 完成")
                     self.scheduler.terminate_process(current_process, self.current_time + 1)
             else:
                 # 没有进程执行
                 self.execution_history.append((self.current_time, None, None))
+                print(f"时间 {self.current_time}: CPU空闲")
 
             # 检查是否所有进程都已完成
             all_terminated = all(p.state == PCB.TERMINATED for p in self.processes)
             if all_terminated:
+                print("所有进程已完成")
                 break
 
             # 时间前进
             self.current_time += 1
+
+        # 打印每个进程的执行情况
+        print(f"模拟结束, 总时间: {self.current_time}")
+        for process in self.processes:
+            print(f"进程 {process.pid}: 执行历史={process.execution_history}, 完成时间={process.completion_time}")
+            if not process.execution_history:
+                print(
+                    f"  注意: 进程 {process.pid} 未执行 (优先级:{process.static_priority}, 到达时间:{process.arrival_time})")
+
+        for process in self.processes:
+            if process.remaining_time <= 0 and process.state != PCB.TERMINATED:
+                process.state = PCB.TERMINATED
+                if process.completion_time == 0:  # 如果还没有设置完成时间
+                    process.completion_time = self.current_time
 
         return self.execution_history
